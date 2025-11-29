@@ -1,6 +1,15 @@
 const mongoose = require("mongoose");
 
 const orderSchema = new mongoose.Schema({
+  // Add this orderId field to match the existing index
+  orderId: {
+    type: String,
+    unique: true,
+    default: function () {
+      return `ORD-${Date.now()}-${Math.random().toString(36).substr(2, 9)}`;
+    },
+  },
+
   customerInfo: {
     name: { type: String, required: true },
     email: { type: String, required: true },
@@ -14,14 +23,13 @@ const orderSchema = new mongoose.Schema({
       required: true,
       enum: ["e-Money", "Cash on Delivery"],
     },
-    eMoneyNumber: String,
-    eMoneyPIN: String,
+    eMoneyNumber: { type: String, default: "" },
+    eMoneyPIN: { type: String, default: "" },
   },
   cartItems: [
     {
       productId: {
         type: mongoose.Schema.Types.ObjectId,
-        ref: "Product",
         required: true,
       },
       name: { type: String, required: true },

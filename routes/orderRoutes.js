@@ -23,31 +23,79 @@ router.post(
     body("customerInfo.paymentMethod")
       .isIn(["e-Money", "Cash on Delivery"])
       .withMessage("Invalid payment method"),
-    body("cartItems")
-      .isArray({ min: 1 })
-      .withMessage("Cart must have at least one item"),
-    body("orderSummary").isObject().withMessage("Order summary is required"),
   ],
   async (req, res) => {
     try {
+      console.log("Received order request:", req.body);
+
       // Check for validation errors
       const errors = validationResult(req);
       if (!errors.isEmpty()) {
-        return res.status(400).json({ errors: errors.array() });
+        console.log("Validation errors:", errors.array());
+        return res.status(400).json({
+          message: "Validation failed",
+          errors: errors.array(),
+        });
       }
 
       const { customerInfo, cartItems, orderSummary } = req.body;
 
-      // Validate cart items have required fields
-      for (let item of cartItems) {
-        if (!item.name || !item.price || !item.quantity || !item.image) {
-          return res.status(400).json({ message: "Invalid cart item data" });
+      // Validate required fields
+      if (!customerInfo || !cartItems || !orderSummary) {
+        console.log("Missing required fields");
+        return res.status(400).json({
+          message:
+            "Missing required fields: customerInfo, cartItems, or orderSummary",
+        });
+      }
+
+      // Validate cart items
+      if (!Array.isArray(cartItems) || cartItems.length === 0) {
+        console.log("Invalid cart items");
+        return res.status(400).json({
+          message: "Cart must have at least one item",
+        });
+      }
+
+      // Validate cart item structure
+      for (const item of cartItems) {
+        if (
+          !item._id ||
+          !item.name ||
+          !item.price ||
+          !item.quantity ||
+          !item.image
+        ) {
+          return res.status(400).json({
+            message: "Invalid cart item structure",
+          });
+        }
+
+        // Validate price and quantity are numbers
+        if (
+          typeof item.price !== "number" ||
+          typeof item.quantity !== "number"
+        ) {
+          return res.status(400).json({
+            message: "Price and quantity must be numbers",
+          });
         }
       }
 
-      // Create order
+      // Create order with proper data structure
       const order = new Order({
-        customerInfo,
+        customerInfo: {
+          name: customerInfo.name,
+          email: customerInfo.email,
+          phone: customerInfo.phone,
+          address: customerInfo.address,
+          zipCode: customerInfo.zipCode,
+          city: customerInfo.city,
+          country: customerInfo.country,
+          paymentMethod: customerInfo.paymentMethod,
+          eMoneyNumber: customerInfo.eMoneyNumber || "",
+          eMoneyPIN: customerInfo.eMoneyPIN || "",
+        },
         cartItems: cartItems.map((item) => ({
           productId: item._id
             ? new mongoose.Types.ObjectId(item._id)
@@ -57,18 +105,48 @@ router.post(
           quantity: item.quantity,
           image: item.image,
         })),
-        orderSummary,
+        orderSummary: {
+          subtotal: orderSummary.subtotal,
+          shipping: orderSummary.shipping,
+          vat: orderSummary.vat,
+          grandTotal: orderSummary.grandTotal,
+        },
       });
 
+      console.log("Attempting to save order...");
+
       const createdOrder = await order.save();
+      console.log("Order created successfully:", createdOrder._id);
 
       res.status(201).json(createdOrder);
     } catch (error) {
       console.error("Order creation error:", error);
-      res.status(500).json({ message: "Server error", error: error.message });
+
+      // More specific error handling
+      if (error.name === "ValidationError") {
+        return res.status(400).json({
+          message: "Validation error",
+          error: error.message,
+        });
+      }
+
+      if (error.name === "CastError") {
+        return res.status(400).json({
+          message: "Invalid data format",
+          error: error.message,
+        });
+      }
+
+      res.status(500).json({
+        message: "Server error while creating order",
+        error: error.message,
+        stack: process.env.NODE_ENV === "production" ? null : error.stack,
+      });
     }
   }
 );
+
+// ... rest of your orderRoutes.js code remains the same
 
 // @desc    Get order by ID
 // @route   GET /api/orders/:id
